@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
 using LinePutScript;
+using LinePutScript.Localization.WPF;
 using Panuon.WPF.UI;
 namespace VPET.Evian.Throw
 {
@@ -25,7 +26,8 @@ namespace VPET.Evian.Throw
             MulSpeedXBox.Text = vts.MulSpeedX.ToString();
             MulSpeedYBox.Text = vts.MulSpeedY.ToString();
             MulSpeed.Text = vts.MulSpeed.ToString();
-            Grid.SetColumn(Save, 1);
+            LLMEnable.IsChecked = vts.LLMEnable;
+            RateBox.Text = vts.Rate.ToString();
         }
 
         private void Window_Closed(object sender, EventArgs e)
@@ -35,41 +37,57 @@ namespace VPET.Evian.Throw
 
         private void Save_Click(object sender, RoutedEventArgs e)
         {
-            if (vts.IsOpen != SwitchOn.IsChecked.Value)
+            try
             {
-                vts.IsOpen = Convert.ToBoolean(SwitchOn.IsChecked.Value);
+                if (vts.IsOpen != SwitchOn.IsChecked.Value)
+                {
+                    vts.IsOpen = Convert.ToBoolean(SwitchOn.IsChecked.Value);
+                }
+                vts.LimitSpeedX = Convert.ToDouble(LimitSpeedXBox.Text);
+                if (vts.LimitSpeedX < 0.0)
+                {
+                    vts.LimitSpeedX = 0.0;
+                }
+                vts.MW.GameSavesData["Throw"][(gdbe)"LimitSpeedX"] = vts.LimitSpeedX;
+                vts.LimitSpeedY = Convert.ToDouble(LimitSpeedYBox.Text);
+                if (vts.LimitSpeedY < 0.0)
+                {
+                    vts.LimitSpeedY = 0.0;
+                }
+                vts.MW.GameSavesData["Throw"][(gdbe)"LimitSpeedY"] = vts.LimitSpeedY;
+                vts.MulSpeedX = Convert.ToDouble(MulSpeedXBox.Text);
+                if (vts.MulSpeedX > 10.0)
+                {
+                    vts.MulSpeedX = 10.0;
+                }
+                vts.MW.GameSavesData["Throw"][(gdbe)"MulSpeedX"] = vts.MulSpeedX;
+                vts.MulSpeedY = Convert.ToDouble(MulSpeedYBox.Text);
+                if (vts.MulSpeedY > 10.0)
+                {
+                    vts.MulSpeedY = 10.0;
+                }
+                vts.MW.GameSavesData["Throw"][(gdbe)"MulSpeedY"] = vts.MulSpeedY;
+                vts.MulSpeed = Convert.ToDouble(MulSpeed.Text);
+                if (vts.MulSpeed > 10.0)
+                {
+                    vts.MulSpeed = 10.0;
+                }
+                vts.MW.GameSavesData["Throw"][(gdbe)"MulSpeed"] = vts.MulSpeed;
+                vts.LLMEnable = LLMEnable.IsChecked.Value;
+                vts.Rate = Convert.ToDouble(RateBox.Text);
+                if (vts.Rate < 0.1)
+                {
+                    vts.Rate = 0.1;
+                }
+                vts.MW.GameSavesData["Throw"][(gdbe)"Rate"] = vts.Rate;
+                vts.TimerChange();
+                vts.MW.GameSavesData["Throw"][(gbol)"LLMEnable"] = LLMEnable.IsChecked.Value;
+                Close();
             }
-            vts.LimitSpeedX = Convert.ToDouble(LimitSpeedXBox.Text);
-            if (vts.LimitSpeedX < 0.0)
+            catch(Exception ex)
             {
-                vts.LimitSpeedX = 0.0;
+                MessageBoxX.Show("输入类型错误：{0}".Translate(ex.Message), "错误".Translate());
             }
-            vts.MW.GameSavesData["Throw"][(gdbe)"LimitSpeedX"] = vts.LimitSpeedX;
-            vts.LimitSpeedY = Convert.ToDouble(LimitSpeedYBox.Text);
-            if (vts.LimitSpeedY < 0.0)
-            {
-                vts.LimitSpeedY = 0.0;
-            }
-            vts.MW.GameSavesData["Throw"][(gdbe)"LimitSpeedY"] = vts.LimitSpeedY;
-            vts.MulSpeedX = Convert.ToDouble(MulSpeedXBox.Text);
-            if (vts.MulSpeedX > 10.0)
-            {
-                vts.MulSpeedX = 10.0;
-            }
-            vts.MW.GameSavesData["Throw"][(gdbe)"MulSpeedX"] = vts.MulSpeedX;
-            vts.MulSpeedY = Convert.ToDouble(MulSpeedYBox.Text);
-            if (vts.MulSpeedY > 10.0)
-            {
-                vts.MulSpeedY = 10.0;
-            }
-            vts.MW.GameSavesData["Throw"][(gdbe)"MulSpeedY"] = vts.MulSpeedY;
-            vts.MulSpeed = Convert.ToDouble(MulSpeed.Text);
-            if (vts.MulSpeed > 10.0)
-            {
-                vts.MulSpeed = 10.0;
-            }
-            vts.MW.GameSavesData["Throw"][(gdbe)"MulSpeed"] = vts.MulSpeed;
-            Close();
         }
 
         private void TestMode_Checked(object sender, RoutedEventArgs e)
@@ -86,7 +104,10 @@ namespace VPET.Evian.Throw
                 MulSpeedYBlock.Visibility = Visibility.Visible;
                 MulSpeed.Visibility = Visibility.Visible;
                 MulSpeedBlock.Visibility = Visibility.Visible;
-                Grid.SetColumn(Save, 2);
+                LLMEnable.Visibility = Visibility.Collapsed;
+                LLMEnableText.Visibility = Visibility.Collapsed;
+                RateBox.Visibility = Visibility.Collapsed;
+                RateText.Visibility = Visibility.Collapsed;
             }
             else
             {
@@ -100,8 +121,16 @@ namespace VPET.Evian.Throw
                 MulSpeedYBlock.Visibility = Visibility.Collapsed;
                 MulSpeed.Visibility = Visibility.Collapsed;
                 MulSpeedBlock.Visibility = Visibility.Collapsed;
-                Grid.SetColumn(Save, 1);
+                LLMEnable.Visibility = Visibility.Visible;
+                LLMEnableText.Visibility = Visibility.Visible;
+                RateBox.Visibility = Visibility.Visible;
+                RateText.Visibility = Visibility.Visible;
             }
+        }
+
+        private void LLMEnable_Click(object sender, RoutedEventArgs e)
+        {
+
         }
     }
 }

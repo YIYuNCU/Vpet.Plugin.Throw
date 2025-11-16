@@ -1,32 +1,48 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
+	<UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LinePutScript" Version="1.11.6" />
-    <PackageReference Include="LinePutScript.Localization.WPF" Version="1.0.7" />
-    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
-    <PackageReference Include="Panuon.WPF" Version="1.1.0" />
-    <PackageReference Include="Panuon.WPF.UI" Version="1.2.1.2" />
-    <PackageReference Include="VPet-Simulator.Core" Version="1.1.0.20" />
-    <PackageReference Include="VPet-Simulator.Windows.Interface" Version="1.1.0.20" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Properties\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EditorConfigFiles Remove="G:\Vpet\test\test4\VPET-Throw\test\.editorconfig" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="G:\Vpet\test\test4\VPET-Throw\test\.editorconfig" />
+	  <PackageReference Include="LinePutScript" Version="1.11.9" >
+		  <Private>false</Private>
+		  <CopyLocal>false</CopyLocal>
+		  <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+	  </PackageReference>
+	  <PackageReference Include="LinePutScript.Localization.WPF" Version="1.0.7" >
+		  <Private>false</Private>
+		  <CopyLocal>false</CopyLocal>
+		  <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+	  </PackageReference>
+	  <PackageReference Include="Microsoft.CSharp" Version="4.7.0">
+		  <Private>false</Private>
+		  <CopyLocal>false</CopyLocal>
+		  <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+	  </PackageReference>
+	  <PackageReference Include="VPet-Simulator.Core" Version="1.1.0.52">
+		  <Private>false</Private>
+		  <CopyLocal>false</CopyLocal>
+		  <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+	  </PackageReference>
+	  <PackageReference Include="VPet-Simulator.Windows.Interface" Version="1.1.0.52">
+		  <Private>false</Private>
+		  <CopyLocal>false</CopyLocal>
+		  <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+	  </PackageReference>
+	  <Folder Include="Properties\" />
+	  <EditorConfigFiles Remove="G:\Vpet\test\test4\VPET-Throw\test\.editorconfig" />
+	  <None Include="G:\Vpet\test\test4\VPET-Throw\test\.editorconfig" />
+	  <Reference Include="VPetLLM">
+		  <HintPath>..\..\..\..\..\SteamLibrary\steamapps\workshop\content\1920960\3561932415\plugin\VPetLLM.dll</HintPath>
+		  <Private>false</Private>
+		  <CopyLocal>false</CopyLocal>
+		  <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+	  </Reference>
   </ItemGroup>
 
 </Project>

@@ -11,7 +11,10 @@ using LinePutScript;
 using LinePutScript.Localization.WPF;
 using VPet_Simulator.Core;
 using VPet_Simulator.Windows.Interface;
-using VPET.Evian.Throw;
+using System.Diagnostics;
+using Panuon.WPF.UI;
+using System.Threading.Tasks;
+
 namespace VPET.Evian.Throw
 {
     public class Throw : MainPlugin
@@ -19,11 +22,13 @@ namespace VPET.Evian.Throw
         public bool IsOpen = true;
         private bool IsCheck;
         private bool IsBegin;
-        private double LLeft = -1.0;
-        private double LUp = -1.0;
+        private double LLeft = -0.1;
+        private double LUp = -0.1;
         private double SpeedX;
         private double SpeedY;
         private double SpeedYO;
+        private double SpeedXforLLM;
+        private double SpeedYforLLM;
         public LpsDocument MConfig;
         private string LeftUp;
         private string LeftDown;
@@ -42,8 +47,16 @@ namespace VPET.Evian.Throw
         public double MulSpeedX;
         public double MulSpeedY;
         public double MulSpeed;
+        public bool LLMEnable;
+        private Stopwatch llmTimeTick;
+        private bool llmCooling = false;
+        private bool llmStarted = false;
         private long presstime;
         public winSetting winSetting;
+        System.Threading.Timer SpeedTimer;
+        System.Threading.Timer UITimer;
+        private bool Lock = false;
+        public double Rate = 30;
 
         public override string PluginName => "Throw";
 
@@ -171,7 +184,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                LimitSpeedX = 100.0;
+                LimitSpeedX = 10.0;
             }
             if (!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("LimitSpeedY")))
             {
@@ -179,7 +192,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                LimitSpeedY = 100.0;
+                LimitSpeedY = 10.0;
             }
             if (!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("MulSpeedX")))
             {
@@ -205,24 +218,41 @@ namespace VPET.Evian.Throw
             {
                 MulSpeed = 1.0;
             }
+            if(!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("LLMEnable")))
+            {
+                LLMEnable = MW.GameSavesData["Throw"][(gbol)"LLMEnable"];
+            }
+            else
+            {
+                if (MW.TalkBoxCurr == null)
+                {
+                    LLMEnable = false;
+                }
+                else
+                    LLMEnable = (MW.TalkBoxCurr.APIName == "VPetLLM");
+            }
+            if(!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("Rate")))
+            {
+                Rate = MW.GameSavesData["Throw"][(gdbe)"Rate"];
+            }
+            else
+            {
+                Rate = 30;
+            }
             MenuItem menuMODConfig = MW.Main.ToolBar.MenuMODConfig;
             menuMODConfig.Visibility = Visibility.Visible;
             MenuItem menuItem = new MenuItem
             {
                 Header = "Throw".Translate(),
-                HorizontalContentAlignment = HorizontalAlignment.Center
+                HorizontalContentAlignment = System.Windows.HorizontalAlignment.Center
             };
             menuItem.Click += delegate
             {
                 Setting();
             };
             menuMODConfig.Items.Add(menuItem);
-            DispatcherTimer dispatcherTimer = new DispatcherTimer();
-            dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, 10);
-            dispatcherTimer.Tick += MSpeedtimer;
-            DispatcherTimer dispatcherTimer2 = new DispatcherTimer();
-            dispatcherTimer2.Interval = new TimeSpan(0, 0, 0, 0, 20);
-            dispatcherTimer2.Tick += MUItimer;
+            SpeedTimer = new(_ => { MSpeedtimer(); }, state: null, dueTime: TimeSpan.Zero, period: TimeSpan.FromMilliseconds(1000 / 30));
+            UITimer = new(_ => { MUItimer(); }, state: null, dueTime: TimeSpan.Zero, period: TimeSpan.FromMilliseconds(1000 / Rate));
             MW.Main.MainGrid.MouseLeftButtonUp += MainGrid_MouseLeftButtonUp;
             for (int i = 0; i < 4; i++)
             {
@@ -236,10 +266,19 @@ namespace VPET.Evian.Throw
                     return false;
                 }, isPress: true));
             }
-            dispatcherTimer2.Start();
-            dispatcherTimer.Start();
         }
-
+        public void TimerChange()
+        {
+            try
+            {
+                SpeedTimer.Change(TimeSpan.Zero, TimeSpan.FromMilliseconds(1000 / 30));
+                UITimer.Change(TimeSpan.Zero, TimeSpan.FromMilliseconds(1000 / Rate));
+            }
+            catch (Exception ex)
+            {
+                _ = MW.Dispatcher.BeginInvoke(() => MessageBoxX.Show("改变定时器计时周期错误，堆栈信息为：{0}".Translate(ex.Message)));
+            }
+        }
         public void MCheck()
         {
             if (IsOpen)
@@ -247,63 +286,94 @@ namespace VPET.Evian.Throw
                 IsCheck = true;
                 IsBegin = false;
                 MW.Main.MoveTimer.Enabled = false;
+                Lock = false;
+                SpeedX = 0;
+                SpeedY = 0;
+                SpeedYO = 0;
+                StopThrowForLLM();
             }
         }
 
-        private void MSpeedtimer(object? sender, EventArgs e)
+        private void MSpeedtimer()
         {
             if (!IsOpen || !IsCheck)
             {
                 return;
             }
-            double windowsDistanceLeft = MW.Core.Controller.GetWindowsDistanceLeft();
-            double windowsDistanceUp = MW.Core.Controller.GetWindowsDistanceUp();
-            double num = windowsDistanceLeft;
-            double num2 = windowsDistanceUp;
+            if (Lock) return;
+            Lock = true;
+            double windowsDistanceLeft = 0;
+            double windowsDistanceUp = 0;
+            Dispatcher.CurrentDispatcher.Invoke(new Action(() =>
+            {
+                windowsDistanceLeft = MW.Core.Controller.GetWindowsDistanceLeft();
+                windowsDistanceUp = MW.Core.Controller.GetWindowsDistanceUp();
+            }));
+            var speedRate = 1.0 / (1000 / Rate);
             if (LLeft > 0.0)
             {
-                if (Math.Abs(SpeedX) > 10.0)
+                if (Math.Abs(SpeedX) > speedRate)
                 {
-                    SpeedX = (SpeedX + (num - LLeft) * 100.0) / 2.0;
+                    SpeedX = ((SpeedX + (windowsDistanceLeft - LLeft)) / 2.0);
                 }
                 else
                 {
-                    SpeedX = num - LLeft;
-                    SpeedX *= 100.0;
+                    SpeedX = (windowsDistanceLeft - LLeft) * speedRate;
                 }
-                if (Math.Abs(SpeedY) > 10.0)
+                if (Math.Abs(SpeedY) > speedRate)
                 {
-                    SpeedY = (SpeedY + (num2 - LUp) * 100.0) / 2.0;
+                    SpeedY = ((SpeedY + (windowsDistanceUp - LUp)) / 2.0);
                 }
                 else
                 {
-                    SpeedY = num2 - LUp;
-                    SpeedY *= 100.0;
+                    SpeedY = (windowsDistanceUp - LUp) * speedRate;
                 }
             }
-            LLeft = num;
-            LUp = num2;
+            LLeft = windowsDistanceLeft;
+            LUp = windowsDistanceUp;
+            Lock = false;
         }
 
         public int MCheckPosition()
         {
-            if ((MW.Core.Controller.GetWindowsDistanceUp() < 0.0 * MW.Main.ActualHeight && MW.Core.Controller.GetWindowsDistanceDown() < SystemParameters.PrimaryScreenHeight) || MW.Core.Controller.GetWindowsDistanceDown() > SystemParameters.PrimaryScreenHeight)
+            try
             {
-                return 1;
+                var windowScreen = GetScreenFromGrid(MW.Main.MainGrid);
+                var screenWidth = 0.0;
+                var screenHeight = 0.0;
+                if (windowScreen == null)
+                {
+                    screenWidth = windowScreen.Bounds.Width;
+                    screenHeight = windowScreen.Bounds.Height;
+                }
+                else
+                {
+                    screenWidth = SystemParameters.PrimaryScreenWidth;
+                    screenHeight = SystemParameters.PrimaryScreenHeight;
+                }
+                if ((MW.Core.Controller.GetWindowsDistanceUp() < 0.0 * MW.Main.ActualHeight && MW.Core.Controller.GetWindowsDistanceDown() < screenHeight) || MW.Core.Controller.GetWindowsDistanceDown() > screenHeight)
+                {
+                    return 1;
+                }
+                if (MW.Core.Controller.GetWindowsDistanceDown() < -0.05 * MW.Main.ActualHeight && MW.Core.Controller.GetWindowsDistanceUp() < screenHeight)
+                {
+                    return 2;
+                }
+                if ((MW.Core.Controller.GetWindowsDistanceLeft() < 0.0 * MW.Main.ActualWidth && MW.Core.Controller.GetWindowsDistanceRight() < screenWidth) || MW.Core.Controller.GetWindowsDistanceRight() > screenWidth)
+                {
+                    return 3;
+                }
+                if ((MW.Core.Controller.GetWindowsDistanceRight() < 0.0 * MW.Main.ActualWidth && MW.Core.Controller.GetWindowsDistanceLeft() < screenWidth) || MW.Core.Controller.GetWindowsDistanceLeft() > screenWidth)
+                {
+                    return 4;
+                }
+                return 0;
             }
-            if (MW.Core.Controller.GetWindowsDistanceDown() < -0.05 * MW.Main.ActualHeight && MW.Core.Controller.GetWindowsDistanceUp() < SystemParameters.PrimaryScreenHeight)
+            catch (Exception ex)
             {
-                return 2;
+                _= MW.Dispatcher.BeginInvoke(() => MessageBoxX.Show("检测桌宠位置时出现错误，堆栈信息为：{0}".Translate(ex.Message)));
+                return 0;
             }
-            if ((MW.Core.Controller.GetWindowsDistanceLeft() < 0.0 * MW.Main.ActualWidth && MW.Core.Controller.GetWindowsDistanceRight() < SystemParameters.PrimaryScreenWidth) || MW.Core.Controller.GetWindowsDistanceRight() > SystemParameters.PrimaryScreenWidth)
-            {
-                return 3;
-            }
-            if ((MW.Core.Controller.GetWindowsDistanceRight() < 0.0 * MW.Main.ActualWidth && MW.Core.Controller.GetWindowsDistanceLeft() < SystemParameters.PrimaryScreenWidth) || MW.Core.Controller.GetWindowsDistanceLeft() > SystemParameters.PrimaryScreenWidth)
-            {
-                return 4;
-            }
-            return 0;
         }
 
         public int CheckPosition()
@@ -311,44 +381,49 @@ namespace VPET.Evian.Throw
             return MW.Dispatcher.Invoke((Func<int>)MCheckPosition);
         }
 
-        private void MUItimer(object? sender, EventArgs e)
+        private async void MUItimer()
         {
             if (!IsOpen || !IsBegin)
             {
                 return;
             }
-            double num = -100.0 * MulSpeed;
-            MW.Dispatcher.Invoke(delegate
+            if (Lock) return;
+            Lock = true;
+            var speedRate = 30 / Rate;
+            double num = -1.0 * MulSpeed * speedRate;
+            await MW.Dispatcher.BeginInvoke(()=>
             {
-                MW.Core.Controller.MoveWindows(SpeedX / 400.0, SpeedY / 300.0);
+                MW.Core.Controller.MoveWindows(SpeedX * speedRate, SpeedY * speedRate);
             });
-            if (SpeedYO > -1000.0 && SpeedYO <= 0.0 && Math.Abs(SpeedX) > 300.0)
+            if (SpeedYO > -speedRate && SpeedYO <= 0.0 && Math.Abs(SpeedX) > speedRate)
             {
-                SpeedYO = 10.0;
-                SpeedY = 10.0;
+                SpeedYO = -speedRate;
+                SpeedY = -speedRate;
             }
-            else if (SpeedYO > -1000.0 && SpeedYO <= 0.0)
+            else if (SpeedYO > -speedRate && SpeedYO <= 0.0)
             {
-                SpeedYO = 1.0;
-                SpeedY = 1.0;
+                SpeedYO = -speedRate;
+                SpeedY = -speedRate;
             }
-            if ((SpeedY - num) / SpeedYO >= -1.5)
+            if (((SpeedY - num) / SpeedYO >= -1.5) && ((SpeedY - num) / SpeedYO < 5))
             {
                 SpeedY -= num;
             }
             else
             {
                 SpeedY = 0.0;
+                SpeedYO = 0.001;
             }
-            if (!(SpeedY / SpeedYO <= -0.8) && (!(SpeedYO > 0.0) || !(SpeedY >= MulSpeed * MulSpeedY * Math.Min(10000.0, Math.Max(2000.0, Math.Max(2.3 * SpeedYO, Math.Abs(2.3 * SpeedX)) / 5.0)))) && SpeedYO != 1.0 && CheckPosition() == 0)
+            if ((!(SpeedYO > 0.0) || !(SpeedY >= MulSpeed * MulSpeedY * Math.Min(100.0, Math.Max(20.0, Math.Max(SpeedYO, Math.Abs(SpeedX)) / 5.0)))) && SpeedYO != 0.001 && CheckPosition() == 0)
             {
+                Lock = false;
                 return;
             }
             int num2 = CheckPosition();
             SpeedY = 0.0;
             SpeedYO = 0.0;
-            LLeft = -1.0;
-            LUp = -1.0;
+            LLeft = -0.1;
+            LUp = -0.1;
             IsBegin = false;
             switch (num2)
             {
@@ -357,7 +432,7 @@ namespace VPET.Evian.Throw
                     {
                         if (LeftUpWallType == "BLoop")
                         {
-                            if (MW.Core.Graph.FindGraph(LeftUpWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal) != null)
+                            if (MW.Dispatcher.Invoke(()=> MW.Core.Graph.FindGraph(LeftUpWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal)) != null)
                             {
                                 MW.Dispatcher.Invoke(delegate
                                 {
@@ -368,23 +443,32 @@ namespace VPET.Evian.Throw
                             }
                             else
                             {
-                                MW.Main.DisplayCEndtoNomal("fall.left");
+                                MW.Dispatcher.Invoke(() =>
+                                {
+                                    MW.Main.DisplayCEndtoNomal("fall.left");
+                                });
                             }
                         }
-                        else if (MW.Core.Graph.FindGraph(LeftUpWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal) != null)
+                        else if (MW.Dispatcher.Invoke(()=> MW.Core.Graph.FindGraph(LeftUpWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal)) != null)
                         {
-                            MW.Main.DisplayCEndtoNomal(LeftUpWall);
+                            MW.Dispatcher.Invoke(() =>
+                            {
+                                MW.Main.DisplayCEndtoNomal(LeftUpWall);
+                            });
                         }
                         else
                         {
-                            MW.Main.DisplayCEndtoNomal("fall.left");
+                            MW.Dispatcher.Invoke(() =>
+                            {
+                                MW.Main.DisplayCEndtoNomal("fall.left");
+                            });
                         }
                     }
                     else if (RightUpWallType == "BLoop")
                     {
-                        if (MW.Core.Graph.FindGraph(RightUpWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal) != null)
+                        if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(RightUpWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal)) != null)
                         {
-                            MW.Dispatcher.Invoke(delegate
+                            MW.Dispatcher.Invoke(()=>
                             {
                                 MW.Core.Controller.MoveWindows(0.0, -200.0);
                                 MW.Core.Controller.ResetPosition();
@@ -393,24 +477,33 @@ namespace VPET.Evian.Throw
                         }
                         else
                         {
-                            MW.Main.DisplayCEndtoNomal("fall.right");
+                            MW.Dispatcher.Invoke(() =>
+                            {
+                                MW.Main.DisplayCEndtoNomal("fall.right");
+                            });
                         }
                     }
-                    else if (MW.Core.Graph.FindGraph(RightUpWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal) != null)
+                    else if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(RightUpWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal)) != null)
                     {
-                        MW.Main.DisplayCEndtoNomal(RightUpWall);
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal(RightUpWall);
+                        });
                     }
                     else
                     {
-                        MW.Main.DisplayCEndtoNomal("fall.right");
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal("fall.right");
+                        });
                     }
                     break;
                 case 4:
                     if (RightWallType == "BLoop")
                     {
-                        if (MW.Core.Graph.FindGraph(RightWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal) != null)
+                        if (MW.Dispatcher.Invoke(()=> MW.Core.Graph.FindGraph(RightWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal)) != null)
                         {
-                            MW.Dispatcher.Invoke(delegate
+                            MW.Dispatcher.Invoke(()=>
                             {
                                 MW.Core.Controller.MoveWindows(200.0, 0.0);
                                 MW.Core.Controller.ResetPosition();
@@ -419,22 +512,31 @@ namespace VPET.Evian.Throw
                         }
                         else
                         {
-                            MW.Main.DisplayCEndtoNomal("fall.right");
+                            MW.Dispatcher.Invoke(() =>
+                            {
+                                MW.Main.DisplayCEndtoNomal("fall.right");
+                            });
                         }
                     }
-                    else if (MW.Core.Graph.FindGraph(RightWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal) != null)
+                    else if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(RightWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal)) != null)
                     {
-                        MW.Main.DisplayCEndtoNomal(RightWall);
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal(RightWall);
+                        });
                     }
                     else
                     {
-                        MW.Main.DisplayCEndtoNomal("fall.right");
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal("fall.right");
+                        });
                     }
                     break;
                 case 3:
                     if (LeftWallType == "BLoop")
                     {
-                        if (MW.Core.Graph.FindGraph(LeftWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal) != null)
+                        if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(LeftWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal)) != null)
                         {
                             MW.Dispatcher.Invoke(delegate
                             {
@@ -448,77 +550,98 @@ namespace VPET.Evian.Throw
                         }
                         else
                         {
-                            MW.Main.DisplayCEndtoNomal("fall.left");
+                            MW.Dispatcher.Invoke(() =>
+                            {
+                                MW.Main.DisplayCEndtoNomal("fall.left");
+                            });
                         }
                     }
-                    else if (MW.Core.Graph.FindGraph(LeftWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal) != null)
+                    else if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(LeftWall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal)) != null)
                     {
-                        MW.Main.DisplayCEndtoNomal(LeftWall);
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal(LeftWall);
+                        });
                     }
                     else
                     {
-                        MW.Main.DisplayCEndtoNomal("fall.left");
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal("fall.left");
+                        });
                     }
                     break;
                 default:
                     if (SpeedX > 0.0)
                     {
-                        MW.Main.DisplayCEndtoNomal("fall.right");
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal("fall.right");
+                        });
                     }
                     else
                     {
-                        MW.Main.DisplayCEndtoNomal("fall.left");
+                        MW.Dispatcher.Invoke(() =>
+                        {
+                            MW.Main.DisplayCEndtoNomal("fall.left");
+                        });
                     }
                     break;
             }
             SpeedX = 0.0;
+            await MW.Dispatcher.BeginInvoke(async () =>
+            {
+                if (!await EnableLLM()) return;
+                    EndThrowForLLM();
+            });
+            Lock = false;
         }
 
         private void MainGrid_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (!IsOpen)
                 return;
-
-            // Apply a smooth speed multiplier when the mouse is released
             SpeedX *= MulSpeedX;
             SpeedY *= MulSpeedY;
 
-            // Ensure the speed doesn't fall below a threshold
             if (Math.Abs(SpeedX) < LimitSpeedX)
+            {
                 SpeedX = 0.0;
+            }
             if (Math.Abs(SpeedY) < LimitSpeedY)
             {
                 SpeedY = 0.0;
                 SpeedYO = 0.0;
             }
 
-            // Apply another multiplier to SpeedX and SpeedY for final adjustments
             SpeedX *= MulSpeed;
             SpeedY *= MulSpeed;
 
-            // Ensure SpeedY stays within a reasonable range
-            SpeedY = Math.Min(Math.Max(SpeedY, -20000.0), 20000.0);
+            SpeedY = Math.Min(Math.Max(SpeedY, -30), 30);
             SpeedYO = SpeedY; // Synchronize SpeedYO with SpeedY
 
             // Apply bounds for SpeedX as well
-            SpeedX = Math.Min(Math.Max(SpeedX, -25000.0), 25000.0);
+            SpeedX = Math.Min(Math.Max(SpeedX, -50), 50);
 
             // If SpeedYO is zero, stop movement entirely
-            if (SpeedYO == 0.0)
+            if (SpeedX == 0)
             {
                 SpeedX = 0.0;
                 SpeedY = 0.0;
                 SpeedYO = 0.0;
-                LLeft = -1.0;
-                LUp = -1.0;
+                LLeft = -0.1;
+                LUp = -0.1;
                 IsBegin = false;
+                IsCheck = false;
                 return;
             }
-
-            // Handle the movement logic based on SpeedX and SpeedY values
+            _=StartThrowForLLM();
             HandleMovement();
-
-            // Check if the object is in motion and update the flags accordingly
+            MW.Dispatcher.Invoke(() =>
+            {
+                if (SpeedX > 0) MW.Main.DisplayBLoopingForce("fall.right");
+                else if (SpeedX < 0) MW.Main.DisplayBLoopingForce("fall.left");
+            });
             if (IsCheck)
             {
                 IsCheck = false;
@@ -552,9 +675,9 @@ namespace VPET.Evian.Throw
 
         private void HandleUpperWallCollision(string wall, string direction)
         {
-            if (MW.Core.Graph.FindGraph(wall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal) != null)
+            if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(wall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal)) != null)
             {
-                MW.Dispatcher.Invoke(delegate
+                MW.Dispatcher.BeginInvoke(delegate
                 {
                     MW.Main.Display(wall, GraphInfo.AnimatType.B_Loop, () =>
                     {
@@ -564,7 +687,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                MW.Dispatcher.Invoke(delegate
+                MW.Dispatcher.BeginInvoke(delegate
                 {
                     MW.Main.Display(MW.Core.Graph.FindGraph($"fall.{direction}", GraphInfo.AnimatType.B_Loop, MW.GameSavesData.GameSave.Mode), () =>
                     {
@@ -576,9 +699,9 @@ namespace VPET.Evian.Throw
 
         private void HandleLowerWallCollision(string wall, string direction)
         {
-            if (MW.Core.Graph.FindGraph(wall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal) != null)
+            if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(wall, GraphInfo.AnimatType.C_End, IGameSave.ModeType.Nomal)) != null)
             {
-                MW.Dispatcher.Invoke(delegate
+                MW.Dispatcher.BeginInvoke(delegate
                 {
                     MW.Main.Display(wall, GraphInfo.AnimatType.B_Loop, () =>
                     {
@@ -588,7 +711,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                MW.Dispatcher.Invoke(delegate
+                MW.Dispatcher.BeginInvoke(delegate
                 {
                     MW.Main.Display(MW.Core.Graph.FindGraph($"fall.{direction}", GraphInfo.AnimatType.B_Loop, MW.GameSavesData.GameSave.Mode), () =>
                     {
@@ -613,8 +736,68 @@ namespace VPET.Evian.Throw
 
         public override void EndGame()
         {
-            base.Save();
-            base.EndGame();
+        }
+
+        public async void EndThrowForLLM()
+        {
+            try
+            {
+                var chatmessage = "";
+                llmTimeTick.Stop();
+                VPetLLM.Utils.Logger.Log("The pet flew in the air for {0} ms".Translate(llmTimeTick.ElapsedMilliseconds));
+                chatmessage = "用户将你扔到了空中，你飞行了{0}ms，你的最大水平速度是{1}px/s，你的最大垂直速度是{2}px/s".Translate(llmTimeTick.ElapsedMilliseconds, SpeedXforLLM, SpeedYforLLM);
+                if (llmTimeTick.ElapsedMilliseconds > 200)
+                {
+                    VPetLLM.Handlers.PluginHandler.SendPluginMessage("Throw", chatmessage);
+                }
+                SpeedXforLLM = 0;
+                SpeedYforLLM = 0;
+                llmCooling = true;
+                llmStarted = false;
+                await Task.Delay(30000);
+                llmCooling = false;
+            }
+            catch (Exception ex)
+            {
+                SpeedXforLLM = 0;
+                SpeedYforLLM = 0;
+                llmStarted = false;
+                _ = MW.Dispatcher.BeginInvoke(() => MessageBoxX.Show("LLM service processing failed,the error stack is {0}".Translate(ex.Message)));
+            }
+        }
+
+        public async Task StopThrowForLLM()
+        {
+            if (!await EnableLLM()) return;
+            if (!llmStarted) return;
+            llmTimeTick.Stop();
+            SpeedXforLLM = 0;
+            SpeedYforLLM = 0;
+            llmStarted = false;
+        }
+
+        public async Task StartThrowForLLM()
+        {
+            if(!await EnableLLM()) return;
+            SpeedXforLLM = SpeedX  / 30;
+            SpeedYforLLM = SpeedYO / 30;
+            llmTimeTick = Stopwatch.StartNew();
+            llmStarted = true;
+        }
+
+        private async Task<bool> EnableLLM()
+        {
+            if (!LLMEnable) return false;
+            if (llmCooling) return false;
+            var isllmDisable = await MW.Dispatcher.InvokeAsync(() =>
+            {
+                return MW.TalkBoxCurr.APIName != "VPetLLM";
+            });
+            if (isllmDisable)
+            {
+                return false;
+            }
+            return true;
         }
 
         public string LoaddllPath(string dll)
@@ -628,6 +811,20 @@ namespace VPET.Evian.Throw
                 }
             }
             return "";
+        }
+
+        public static System.Windows.Forms.Screen GetScreenFromGrid(Grid grid)
+        {
+            // 获取Grid所在的Window
+            Window window = Window.GetWindow(grid);
+            if (window == null) return null;
+
+            // 获取窗口的句柄
+            var windowInteropHelper = new System.Windows.Interop.WindowInteropHelper(window);
+            IntPtr windowHandle = windowInteropHelper.Handle;
+
+            // 根据窗口句柄获取所在的屏幕
+            return System.Windows.Forms.Screen.FromHandle(windowHandle);
         }
     }
 }
