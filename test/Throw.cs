@@ -1,4 +1,4 @@
-﻿// Throw, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+// Throw, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 // VPET.Evian.Throw.Throw
 using System;
 using System.IO;
@@ -359,11 +359,11 @@ namespace VPET.Evian.Throw
                 {
                     return 2;
                 }
-                if ((MW.Core.Controller.GetWindowsDistanceLeft() < 0.0 * MW.Main.ActualWidth && MW.Core.Controller.GetWindowsDistanceRight() < screenWidth) || MW.Core.Controller.GetWindowsDistanceRight() > screenWidth)
+                if (MW.Core.Controller.GetWindowsDistanceLeft() < 0)
                 {
                     return 3;
                 }
-                if ((MW.Core.Controller.GetWindowsDistanceRight() < 0.0 * MW.Main.ActualWidth && MW.Core.Controller.GetWindowsDistanceLeft() < screenWidth) || MW.Core.Controller.GetWindowsDistanceLeft() > screenWidth)
+                if (MW.Core.Controller.GetWindowsDistanceRight() < 0)
                 {
                     return 4;
                 }
@@ -419,13 +419,12 @@ namespace VPET.Evian.Throw
                 Lock = false;
                 return;
             }
-            int num2 = CheckPosition();
             SpeedY = 0.0;
             SpeedYO = 0.0;
             LLeft = -0.1;
             LUp = -0.1;
             IsBegin = false;
-            switch (num2)
+            switch (CheckPosition())
             {
                 case 1:
                     if (SpeedX < 0.0)
@@ -505,10 +504,16 @@ namespace VPET.Evian.Throw
                         {
                             MW.Dispatcher.Invoke(()=>
                             {
-                                MW.Core.Controller.MoveWindows(200.0, 0.0);
                                 MW.Core.Controller.ResetPosition();
                                 MW.Main.DisplayBLoopingForce(RightWall);
-                            });
+								(new Action(async () => {
+									int num = 0;
+									while (MW.Core.Controller.GetWindowsDistanceRight() != 0 && num <= 100) {
+                                        MW.Core.Controller.MoveWindows(MW.Core.Controller.GetWindowsDistanceRight(), 0.0);
+                                        num++;
+                                    }
+								}))();
+							});
                         }
                         else
                         {
@@ -538,15 +543,18 @@ namespace VPET.Evian.Throw
                     {
                         if (MW.Dispatcher.Invoke(()=>MW.Core.Graph.FindGraph(LeftWall, GraphInfo.AnimatType.B_Loop, IGameSave.ModeType.Nomal)) != null)
                         {
-                            MW.Dispatcher.Invoke(delegate
+                            MW.Dispatcher.Invoke(()=>
                             {
-                                if (MW.Core.Controller.GetWindowsDistanceLeft() > -100.0)
-                                {
-                                    MW.Core.Controller.MoveWindows(-200.0, 0.0);
-                                }
                                 MW.Core.Controller.ResetPosition();
-                                MW.Main.DisplayBLoopingForce(LeftWall);
-                            });
+								MW.Main.DisplayBLoopingForce(LeftWall);
+								(new Action(async () => {
+                                    int num = 0;
+									while (MW.Core.Controller.GetWindowsDistanceLeft() != 0 && num<=100) {
+										MW.Core.Controller.MoveWindows(-MW.Core.Controller.GetWindowsDistanceLeft(), 0.0);
+                                        num++;
+									}
+								}))();
+							});
                         }
                         else
                         {
