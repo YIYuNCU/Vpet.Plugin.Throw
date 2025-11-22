@@ -90,6 +90,15 @@ namespace VPET.Evian.Throw
             }
         }
 
+        private void Def_Click(object sender, RoutedEventArgs e) {
+			LimitSpeedXBox.Text = Throw.def_LimitSpeedX.ToString();
+			LimitSpeedYBox.Text = Throw.def_LimitSpeedY.ToString();
+			MulSpeedXBox.Text = Throw.def_MulSpeedX.ToString();
+			MulSpeedYBox.Text = Throw.def_MulSpeedY.ToString();
+			MulSpeed.Text = Throw.def_MulSpeed.ToString();
+			RateBox.Text = Throw.def_Rate.ToString();
+		}
+
         private void TestMode_Checked(object sender, RoutedEventArgs e)
         {
             if (TestMode.IsChecked == true)

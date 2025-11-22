@@ -43,10 +43,15 @@ namespace VPET.Evian.Throw
         private string RightUpWall;
         private string RightUpWallType;
         public double LimitSpeedX;
+        public const double def_LimitSpeedX = 10.0;
         public double LimitSpeedY;
+        public const double def_LimitSpeedY = 10.0;
         public double MulSpeedX;
+        public const double def_MulSpeedX = 1.0;
         public double MulSpeedY;
+        public const double def_MulSpeedY = 1.0;
         public double MulSpeed;
+        public const double def_MulSpeed = 1.0;
         public bool LLMEnable;
         private Stopwatch llmTimeTick;
         private bool llmCooling = false;
@@ -57,6 +62,7 @@ namespace VPET.Evian.Throw
         System.Threading.Timer UITimer;
         private bool Lock = false;
         public double Rate = 30;
+        public const double def_Rate = 30;
 
         public override string PluginName => "Throw";
 
@@ -184,7 +190,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                LimitSpeedX = 10.0;
+                LimitSpeedX = def_LimitSpeedX;
             }
             if (!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("LimitSpeedY")))
             {
@@ -192,7 +198,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                LimitSpeedY = 10.0;
+                LimitSpeedY = def_LimitSpeedY;
             }
             if (!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("MulSpeedX")))
             {
@@ -200,7 +206,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                MulSpeedX = 1.0;
+                MulSpeedX = def_MulSpeedX;
             }
             if (!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("MulSpeedY")))
             {
@@ -208,7 +214,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                MulSpeedY = 1.0;
+                MulSpeedY = def_LimitSpeedY;
             }
             if (!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("MulSpeed")))
             {
@@ -216,7 +222,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                MulSpeed = 1.0;
+                MulSpeed = def_MulSpeed;
             }
             if(!string.IsNullOrEmpty(MW.GameSavesData["Throw"].GetString("LLMEnable")))
             {
@@ -237,7 +243,7 @@ namespace VPET.Evian.Throw
             }
             else
             {
-                Rate = 30;
+                Rate = def_Rate;
             }
             MenuItem menuMODConfig = MW.Main.ToolBar.MenuMODConfig;
             menuMODConfig.Visibility = Visibility.Visible;
